@@ -16,7 +16,9 @@
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/intake_router.py  混合日志文件接收/回执/小节下载/恢复
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
+│   ├── app/services/intake.py   混合文件分段识别、原文留存与接收清单
 │   ├── app/services/base.py     共享服务骨架
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
@@ -70,6 +72,31 @@ npm run dev
 | 回溯重放引擎 | `replay_engine` | 重放任务 | 历史批次范围、新解析规则版本、重放状态 |
 | 聚合查询视图 | `aggregation_view` | 聚合视图 | 视图名称、聚合维度、指标定义 |
 | 采集血缘 | `data_lineage` | 血缘关系 | 来源批次、解析规则版本、标准化版本 |
+
+## 混合日志文件接收
+
+格式适配层页面（`/format_adapter`）顶部是混合文件接收入口。一份文件里可以同时出现多种
+已支持格式和暂时没有适配配置的未知片段：
+
+1. 上传后按行识别格式，连续同格式的行组成一个小节（空行不切断小节）。
+2. 可识别小节逐行写入原始日志记录，并把文件行号、适配配置和适配版本记在记录上。
+3. 解析阶段按该记录所选格式对应的字段解析规则生成映射，并把实际输出字段与规则版本回写到接收清单。
+4. 未知格式小节只保存原文和原文引用（`文件标识#L起-L止`），不计入合格明细，
+   可在接收回执里预览或下载候选片段。
+5. 接收中断后按原文件标识恢复：内容摘要一致才允许恢复，已确认小节整段复用，
+   按行号去重，不会重复计入；补登记新格式后按同一文件标识重传即可让待适配小节进入接收记录。
+
+主要接口：
+
+```bash
+# 上传/接收（file_key 留空则按内容摘要生成）
+curl -X POST http://127.0.0.1:8013/api/intake/files -H 'Content-Type: application/json' \
+  -d '{"file_name":"mixed.log","content":"..."}'
+curl http://127.0.0.1:8013/api/intake/files/<file_key>        # 接收回执：可用小节 / 待适配小节
+curl http://127.0.0.1:8013/api/intake/candidates              # 待适配候选片段
+curl -X POST http://127.0.0.1:8013/api/intake/files/<file_key>/recover   # 按原文件标识恢复
+curl http://127.0.0.1:8013/api/intake/segments/<id>/download  # 下载小节原文
+```
 
 ## 约定
 
